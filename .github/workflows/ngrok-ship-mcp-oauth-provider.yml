@@ -1,0 +1,59 @@
+# ngrok ship created this workflow. It is maintained here because it runs only
+# for main in the ngrok-adhoc organization, so forks and feature branches skip it.
+# ngrok-ship: pipeline-updates disabled
+
+name: "Build and Push Container (mcp-oauth-provider / app_3MLSAYOTcuGlNw8JahUAPEZdqi1)"
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  IMAGE_REFERENCE: "registry.ship.ngrok.com/ac_1gbcp4ul5rptr9eqgwj21icgsux/app_3mlsayotcuglnw8jahuapezdqi1"
+  NGROK_APP_ID: "app_3MLSAYOTcuGlNw8JahUAPEZdqi1"
+
+jobs:
+  build-and-push:
+    if: github.repository_owner == 'ngrok-adhoc'
+    runs-on: "ubuntu-latest"
+    permissions:
+      contents: "read"
+    steps:
+      - uses: "actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803" # v6.1.0
+        with:
+          persist-credentials: false
+
+      - uses: "docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550" # v4.8.0
+        with:
+          registry: "registry.ship.ngrok.com"
+          username: "creg_3Fpsi82fNgKVILsGzy3HzE5JA28"
+          password: "${{ secrets.NGROK_REGISTRY_PASSWORD_CREG_3FPSI82FNGKVILSGZY3HZE5JA28 }}"
+
+      - id: "meta"
+        uses: "docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302" # v6.2.0
+        with:
+          images: "${{ env.IMAGE_REFERENCE }}"
+          tags: |
+            type=sha,format=long,prefix=
+
+      - uses: "docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc" # v7.4.0
+        with:
+          context: "."
+          file: "Dockerfile"
+          push: true
+          tags: "${{ steps.meta.outputs.tags }}"
+          labels: "${{ steps.meta.outputs.labels }}"
+          build-args: |
+            COMMIT_SHA=${{ github.sha }}
+
+      - name: "Write image reference"
+        run: |
+          cat <<EOF > ngrok-image.json
+          {"image":"${{ steps.meta.outputs.tags }}","commit_sha":"${{ github.sha }}"}
+          EOF
+
+      - uses: "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9" # v7.0.2
+        with:
+          name: "ngrok-compute-image"
+          path: "ngrok-image.json"

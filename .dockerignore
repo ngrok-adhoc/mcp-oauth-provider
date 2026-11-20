@@ -1,0 +1,11 @@
+*
+!Dockerfile
+!package.json
+!package-lock.json
+!bin/
+!bin/**
+!lib/
+!lib/**
+!tsconfig.json
+!assets/
+!assets/**

@@ -1,0 +1,56 @@
+{
+  "name": "mcp-oauth-provider",
+  "version": "0.1.1",
+  "description": "Add ngrok-managed OAuth to a local MCP server without changing its code",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ngrok-adhoc/mcp-oauth-provider.git"
+  },
+  "bin": {
+    "mcp-oauth-provider": "dist/bin/mcp-oauth-provider.js"
+  },
+  "files": [
+    "dist/",
+    "assets/",
+    "README.md",
+    "LICENSE",
+    ".env.example"
+  ],
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint --deny-warnings .",
+    "check": "npm run format:check && npm run lint && npm test",
+    "tag-release": "node scripts/tag-release.js",
+    "build": "tsc",
+    "prepare": "npm run build",
+    "prestart": "npm run build",
+    "start": "node dist/bin/mcp-oauth-provider.js",
+    "pretest": "npm run build"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1172.0",
+    "@hono/node-server": "2.1.9",
+    "@ngrok/ngrok": "1.8.0",
+    "hono": "4.13.19",
+    "oidc-provider": "9.15.0",
+    "re2js": "2.10.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.4.0",
+    "@modelcontextprotocol/node": "2.1.2",
+    "@modelcontextprotocol/server": "2.4.0",
+    "@types/node": "26.6.6",
+    "@types/oidc-provider": "9.13.1",
+    "oxfmt": "0.79.0",
+    "oxlint": "1.94.0",
+    "typescript": "7.0.2",
+    "zod": "4.6.7"
+  },
+  "engines": {
+    "node": ">=26"
+  }
+}
