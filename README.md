@@ -83,7 +83,7 @@ S3_BUCKET_OWNER=123456789012
 
 Use the AWS SDK's standard credential chain, such as the deployment's IAM role or the `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optional `AWS_SESSION_TOKEN` environment variables. Use a private bucket and a separate key per provider. The snapshot contains private signing keys and live OAuth credentials. Set `S3_BUCKET_OWNER` so S3 rejects reads and writes if the bucket name ever belongs to another account, for example after a typo or a deleted bucket. Grant `s3:GetObject` and `s3:PutObject` on the state object. For the first startup with an absent object, allow `s3:ListBucket` so S3 can report that the key does not exist.
 
-With `STORAGE=s3`, startup fails if the provider cannot access S3. With `STORAGE` omitted, the provider uses S3 when it has a bucket and AWS credentials and otherwise uses local JSON. Set `STORAGE=local` to always use the filesystem. S3 mode writes directly to the object and requires no local state volume. Run a single provider instance per object. Conditional writes prevent a stale instance from overwriting newer state.
+With `STORAGE=s3`, startup fails if the provider cannot access S3. With `STORAGE` omitted, the provider uses S3 when it has a bucket and AWS credentials and otherwise uses local JSON. Set `STORAGE=local` to always use the filesystem. S3 mode writes directly to the object and requires no local state volume. Run a single provider instance per object. A second provider with the same `NGROK_URL` exits before it reads or writes state, and conditional writes prevent a stale instance from overwriting newer state.
 
 ## Connect Codex and call a tool
 

@@ -87,15 +87,31 @@ test("URL discovery is fail-closed and closes its provisional listener", async (
   assert.equal(fake.session.closed, true);
 });
 
-test("configured URL skips discovery and invalid origins close the session", async () => {
+test("configured URL is claimed before state opens and invalid origins close the session", async () => {
   const fake = fakeSdk();
   const result = await reservePublicUrl({
     authtoken: "fixture-token",
     publicUrl: configuration.issuer,
     sdk: fake.sdk,
   });
-  assert.equal(fake.calls.length, 0);
+  assert.equal(result.issuer, configuration.issuer);
+  assert.equal(fake.calls.length, 1);
+  assert.equal(fake.calls[0].domain, "assigned.ngrok-free.dev");
+  assert.equal(fake.calls[0].binding, "public");
+  assert.equal(fake.calls[0].policy.on_http_request[0].actions[0].config.status_code, 503);
+  assert.equal(fake.calls[0].closed, true);
   await result.close();
+  // A provider already serving this URL makes a second one fail before it opens OAuth state.
+  const busy = fakeSdk({ failAt: 1 });
+  await assert.rejects(
+    reservePublicUrl({
+      authtoken: "fixture-token",
+      publicUrl: configuration.issuer,
+      sdk: busy.sdk,
+    }),
+    /cannot create this endpoint/,
+  );
+  assert.equal(busy.session.closed, true);
   const invalid = fakeSdk();
   await assert.rejects(
     reservePublicUrl({

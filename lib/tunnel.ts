@@ -56,37 +56,38 @@ export async function reservePublicUrl({
   const session = await new sdk.SessionBuilder().authtoken(authtoken).connect();
   let provisional: Listener | undefined;
   try {
-    let issuer;
-    if (publicUrl) issuer = publicOrigin(publicUrl);
-    else {
-      provisional = await session
-        .httpEndpoint()
-        .binding("public")
-        .trafficPolicy(
-          JSON.stringify({
-            on_http_request: [
-              {
-                actions: [
-                  {
-                    type: "custom-response",
-                    config: {
-                      status_code: 503,
-                      body: "MCP OAuth Provider is starting. Retry shortly.",
-                      headers: { "content-type": "text/plain", "cache-control": "no-store" },
-                    },
+    // Claim the public URL before OAuth state opens: a second instance fails here instead of
+    // rewriting shared state that the running instance owns.
+    // shortcut: the claim is released while state opens, so two instances starting at the same
+    // moment can both pass; run one provider per state object.
+    const configured = publicUrl ? publicOrigin(publicUrl) : undefined;
+    const endpoint = session.httpEndpoint().binding("public");
+    if (configured) endpoint.domain(new URL(configured).hostname);
+    provisional = await endpoint
+      .trafficPolicy(
+        JSON.stringify({
+          on_http_request: [
+            {
+              actions: [
+                {
+                  type: "custom-response",
+                  config: {
+                    status_code: 503,
+                    body: "MCP OAuth Provider is starting. Retry shortly.",
+                    headers: { "content-type": "text/plain", "cache-control": "no-store" },
                   },
-                ],
-              },
-            ],
-          }),
-        )
-        .listen();
-      const reservedUrl = provisional.url();
-      if (!reservedUrl) throw new Error("ngrok did not allocate a public URL.");
-      issuer = publicOrigin(reservedUrl);
-      await provisional.close();
-      provisional = undefined;
-    }
+                },
+              ],
+            },
+          ],
+        }),
+      )
+      .listen();
+    const reservedUrl = provisional.url();
+    if (!reservedUrl) throw new Error("ngrok did not allocate a public URL.");
+    const issuer = configured ?? publicOrigin(reservedUrl);
+    await provisional.close();
+    provisional = undefined;
     return {
       session,
       issuer,
