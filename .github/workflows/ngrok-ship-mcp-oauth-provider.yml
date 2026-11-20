@@ -2,7 +2,7 @@
 # for main in the ngrok-adhoc organization, so forks and feature branches skip it.
 # ngrok-ship: pipeline-updates disabled
 
-name: "Build and Push Container (mcp-oauth-provider / app_3MLSAYOTcuGlNw8JahUAPEZdqi1)"
+name: "Build and Push Container (mcp-oauth-provider / app_3MLgwTz3i1sax4zKD6MkCWHcQQX)"
 
 on:
   push:
@@ -10,8 +10,8 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_REFERENCE: "registry.ship.ngrok.com/ac_1gbcp4ul5rptr9eqgwj21icgsux/app_3mlsayotcuglnw8jahuapezdqi1"
-  NGROK_APP_ID: "app_3MLSAYOTcuGlNw8JahUAPEZdqi1"
+  IMAGE_REFERENCE: "registry.ship.ngrok.com/ac_1gbcp4ul5rptr9eqgwj21icgsux/app_3mlgwtz3i1sax4zkd6mkcwhcqqx"
+  NGROK_APP_ID: "app_3MLgwTz3i1sax4zKD6MkCWHcQQX"
 
 jobs:
   build-and-push:
