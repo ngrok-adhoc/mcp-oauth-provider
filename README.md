@@ -2,6 +2,17 @@
 
 Put Google sign-in in front of an existing local HTTP MCP server, without changing the server. ngrok handles sign-in and routing; the provider handles OAuth registration, consent and tokens.
 
+## Why this exists
+
+Running an MCP server on your own machine is easy. Running one centrally for your team is harder: you either hand out API tokens, or build the sign-in flow AI assistants support so people just log in. This skips both: run one command and your teammates connect with their Google account, no tokens to hand out and no auth code to write.
+
+It's built for development and quick sharing, not production. Everyone you let in gets the same access, so it doesn't replace proper per-user authorization.
+
+- **Share one MCP server without implementing the OAuth flow.** Teammates connect from Claude, Codex, Cursor or ChatGPT instead of each running their own.
+- **Choose who gets in.** People sign in with Google. Allow exact emails or everyone with an address at your company's domain.
+- **Keep the server as it is.** It stays a plain HTTP MCP server, with no code changes.
+- **Make it yours.** The sign-in approval page shows your server's name and icon.
+
 ## Run with npx
 
 Requires **Node.js 26+**, Git, and an ngrok account with paid internal endpoints and Traffic Policy actions. No Google Cloud project or OAuth app is needed.
@@ -38,16 +49,16 @@ Cursor, ChatGPT and Claude web work too; see [client setup](https://github.com/n
 
 ## Optional settings
 
-| Setting                              | Use                                                                  |
-| ------------------------------------ | -------------------------------------------------------------------- |
-| `NGROK_URL`                          | A fixed HTTPS origin, so connections survive restarts                |
-| `USERS`                              | More emails, or `/regex/` patterns such as `"/[^@]+@example\\.org/"` |
-| `MCP_SERVER_NAME`, `MCP_SERVER_ICON` | Brand the consent page                                               |
-| `APP_URL`                            | Also serve a web app on the same public URL                          |
+| Setting                              | Use                                                                    |
+| ------------------------------------ | ---------------------------------------------------------------------- |
+| `NGROK_URL`                          | A fixed HTTPS origin, so connections survive restarts                  |
+| `USERS`                              | More emails, or `/regex/` patterns such as `"/[^@]+@example\\.org/"`   |
+| `MCP_SERVER_NAME`, `MCP_SERVER_ICON` | Brand the consent page                                                 |
+| `APP_URL`                            | Send other paths to another app, so your dev domain isn't only for MCP |
 
 See [.env.example](.env.example) for every setting and [advanced features](https://github.com/ngrok-adhoc/mcp-oauth-provider/blob/main/docs/advanced.md) for details, including [identity headers](https://github.com/ngrok-adhoc/mcp-oauth-provider/blob/main/docs/advanced.md#identify-users-in-your-mcp-server) that tell your server who is calling.
 
-## Docker
+## Run with Docker Compose
 
 Follow the [Compose tutorial](https://github.com/ngrok-adhoc/mcp-oauth-provider/blob/main/docs/python.md) to run the provider with a sample Python MCP server, no local Node or Python needed.
 
