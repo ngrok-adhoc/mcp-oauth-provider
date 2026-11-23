@@ -20,17 +20,20 @@ test("working-directory .env, environment precedence and URL boundaries", async 
     assert.equal(config.mcpUrl, "http://localhost:4322/custom-mcp");
     assert.equal(config.publicUrl, undefined);
     assert.equal(config.claudeCimd, false);
+    assert.equal(config.oauthRequestsPerMinute, undefined);
     assert.equal(config.mcpServerName, undefined);
     assert.equal(config.mcpServerIcon, undefined);
     const branded = await readConfig({
       cwd,
       env: {
         CLAUDE_CIMD: "1",
+        OAUTH_REQUESTS_PER_MINUTE: " 45 ",
         MCP_SERVER_NAME: " Bowie ",
         MCP_SERVER_ICON: "https://images.example.com/bowie.png",
       },
     });
     assert.equal(branded.claudeCimd, true);
+    assert.equal(branded.oauthRequestsPerMinute, 45);
     assert.equal(branded.mcpServerName, "Bowie");
     assert.equal(branded.mcpServerIcon.href, "https://images.example.com/bowie.png");
     const icon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>';
@@ -69,6 +72,31 @@ test("working-directory .env, environment precedence and URL boundaries", async 
     }
   } finally {
     await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("rate limits accept only ngrok-supported integer capacities", async (t) => {
+  const cwd = await mkdtemp(join(tmpdir(), "mcp-oauth-rate-config-"));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const env = {
+    USERS: '["owner@example.com"]',
+    NGROK_AUTHTOKEN: "fixture",
+    MCP_SERVER_URL: "http://localhost:3001/mcp",
+  };
+  await writeFile(join(cwd, ".env"), "OAUTH_REQUESTS_PER_MINUTE=1\nMCP_REQUESTS_PER_MINUTE=60\n");
+  const local = await readConfig({ cwd, env });
+  assert.equal(local.oauthRequestsPerMinute, 1);
+  assert.equal(local.mcpRequestsPerMinute, 60);
+  for (const [name, key] of [
+    ["OAUTH_REQUESTS_PER_MINUTE", "oauthRequestsPerMinute"],
+    ["MCP_REQUESTS_PER_MINUTE", "mcpRequestsPerMinute"],
+  ]) {
+    const readLimit = (value) => readConfig({ cwd, env: { ...env, [name]: value } });
+    assert.equal((await readLimit(" "))[key], undefined);
+    assert.equal((await readLimit("2000000000"))[key], 2_000_000_000);
+    for (const value of ["0", "-1", "1.5", "1e2", "0x20", "unlimited", "2000000001"]) {
+      await assert.rejects(readLimit(value), new RegExp(name));
+    }
   }
 });
 

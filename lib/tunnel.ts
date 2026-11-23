@@ -131,6 +131,8 @@ export async function startTunnels({
   mcpUpstreamUrl,
   gatewaySecret,
   users,
+  oauthRequestsPerMinute,
+  mcpRequestsPerMinute,
   jwksUrl,
 }: {
   session: Session;
@@ -142,6 +144,8 @@ export async function startTunnels({
   mcpUpstreamUrl: string;
   gatewaySecret: string;
   users: AccessEntry[];
+  oauthRequestsPerMinute?: number;
+  mcpRequestsPerMinute?: number;
   jwksUrl?: string;
 }) {
   const listeners: Listener[] = [];
@@ -170,6 +174,8 @@ export async function startTunnels({
       validationUrl,
       gatewaySecret,
       users,
+      oauthRequestsPerMinute,
+      mcpRequestsPerMinute,
       stripMcpQuery: Boolean(internalMcpOrigin),
       appInternalUrl,
       mcpUpstreamPath,

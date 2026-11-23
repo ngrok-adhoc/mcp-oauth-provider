@@ -26,6 +26,8 @@ export function createPolicy({
   validationUrl,
   gatewaySecret,
   users,
+  oauthRequestsPerMinute = 30,
+  mcpRequestsPerMinute = 60,
   stripMcpQuery,
   appInternalUrl,
   mcpUpstreamPath,
@@ -35,6 +37,8 @@ export function createPolicy({
   validationUrl: string;
   gatewaySecret: string;
   users: AccessEntry[];
+  oauthRequestsPerMinute?: number;
+  mcpRequestsPerMinute?: number;
   stripMcpQuery?: boolean;
   appInternalUrl?: string;
   mcpUpstreamPath?: string;
@@ -55,6 +59,7 @@ export function createPolicy({
   const allowedUser = `${hasEmail} && (${matches(users)})`;
   const body = "actions.ngrok.http_request.res.body";
   const validated = `req.url.path == '/mcp' && has(actions.ngrok.http_request.res) && actions.ngrok.http_request.res.status_code == 200 && ${body}.matches(${JSON.stringify(validBody)})`;
+  const verifiedUserId = `${body}.split('\\n')[${identityHeaders.indexOf("x-mcp-user-id") + 1}]`;
   const reserved = [
     "/mcp",
     "/mcp-debug",
@@ -95,7 +100,7 @@ export function createPolicy({
             config: {
               name: "OAuth registration and authorization",
               algorithm: "sliding_window",
-              capacity: 30,
+              capacity: oauthRequestsPerMinute,
               rate: "60s",
               bucket_key: ["conn.client_ip"],
             },
@@ -225,6 +230,19 @@ export function createPolicy({
       {
         expressions: [validated],
         actions: [
+          {
+            type: "rate-limit",
+            config: {
+              name: "Authenticated MCP requests",
+              algorithm: "sliding_window",
+              capacity: mcpRequestsPerMinute,
+              rate: "60s",
+              // Older access tokens may lack a user ID.
+              bucket_key: [
+                `${verifiedUserId} == '' ? 'ip:' + conn.client_ip : 'user:' + ${verifiedUserId}`,
+              ],
+            },
+          },
           { type: "remove-headers", config: { headers: ["authorization"] } },
           // The local proxy requires the gateway secret, so only this policy can reach it.
           ...(stripMcpQuery

@@ -140,6 +140,8 @@ test("opens one public and two internal listeners, after public signing keys are
   const tunnels = await startTunnels({
     ...configuration,
     users: ["guest@example.com", { regex: "\\A(?:[^@]+@ngrok\\.com)\\z" }],
+    oauthRequestsPerMinute: 45,
+    mcpRequestsPerMinute: 90,
     session: fake.session,
   });
   assert.equal(checkedKeys, true);
@@ -148,6 +150,13 @@ test("opens one public and two internal listeners, after public signing keys are
   assert.equal(fake.calls[0].upstream, configuration.mcpUrl);
   assert.equal(fake.calls[1].binding, "public");
   assert.ok(JSON.stringify(fake.calls[1].policy).includes(".matches("));
+  const rateLimits = fake.calls[1].policy.on_http_request
+    .flatMap((rule) => rule.actions)
+    .filter((action) => action.type === "rate-limit");
+  assert.deepEqual(
+    rateLimits.map((action) => action.config.capacity),
+    [45, 90],
+  );
   assert.ok(JSON.stringify(fake.calls[1].policy).includes("guest@example.com"));
   assert.equal(fake.calls[1].upstream, configuration.helperUrl);
   assert.equal(fake.calls[2].binding, "internal");
@@ -193,7 +202,8 @@ test("routes validated MCP requests to an existing ngrok internal endpoint", asy
     actions.some(({ type }) => type === "forward-internal"),
   );
   assert.match(rule.expressions[0], /status_code == 200/);
-  assert.deepEqual(rule.actions.slice(0, 3), [
+  assert.equal(rule.actions[0].type, "rate-limit");
+  assert.deepEqual(rule.actions.slice(1, 4), [
     { type: "remove-headers", config: { headers: ["authorization"] } },
     { type: "url-rewrite", config: { from: "^([^?]+)\\?.*$", to: "$1" } },
     { type: "forward-internal", config: { url: internalMcpOrigin, on_error: "continue" } },

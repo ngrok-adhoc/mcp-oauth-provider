@@ -30,6 +30,8 @@ const help = `MCP OAuth Provider
 Run this command from your MCP server’s project directory. Settings come from .env or environment:
   NGROK_AUTHTOKEN  Your ngrok agent authtoken (required)
   USERS            Required JSON array of emails or /regex/ strings for MCP access
+  OAUTH_REQUESTS_PER_MINUTE  Per-IP limit for registration and authorization (default 30)
+  MCP_REQUESTS_PER_MINUTE    Per-user limit for authenticated MCP requests (default 60)
   CLAUDE_CIMD      Set to 1 to allow published OAuth identities for hosted Claude and Codex
   APP_URL          Optional website origin for ngrok to forward to
   MCP_SERVER_URL   Existing HTTP(S) MCP server URL, including its path (required)

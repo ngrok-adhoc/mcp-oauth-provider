@@ -49,12 +49,14 @@ Cursor, ChatGPT and Claude web work too; see [client setup](https://github.com/n
 
 ## Optional settings
 
-| Setting                              | Use                                                                    |
-| ------------------------------------ | ---------------------------------------------------------------------- |
-| `NGROK_URL`                          | A fixed HTTPS origin, so connections survive restarts                  |
-| `USERS`                              | More emails, or `/regex/` patterns such as `"/[^@]+@example\\.org/"`   |
-| `MCP_SERVER_NAME`, `MCP_SERVER_ICON` | Brand the consent page                                                 |
-| `APP_URL`                            | Send other paths to another app, so your dev domain isn't only for MCP |
+| Setting                              | Use                                                                             |
+| ------------------------------------ | ------------------------------------------------------------------------------- |
+| `NGROK_URL`                          | A fixed HTTPS origin, so connections survive restarts                           |
+| `USERS`                              | More emails, or `/regex/` patterns such as `"/[^@]+@example\\.org/"`            |
+| `MCP_SERVER_NAME`, `MCP_SERVER_ICON` | Brand the consent page                                                          |
+| `APP_URL`                            | Send other paths to another app, so your dev domain isn't only for MCP          |
+| `OAUTH_REQUESTS_PER_MINUTE`          | Requests to `/reg`, `/auth` and `/auth/*` per minute per client IP (default 30) |
+| `MCP_REQUESTS_PER_MINUTE`            | Authenticated requests to `/mcp` per minute per user (default 60)               |
 
 See [.env.example](.env.example) for every setting and [advanced features](https://github.com/ngrok-adhoc/mcp-oauth-provider/blob/main/docs/advanced.md) for details, including [identity headers](https://github.com/ngrok-adhoc/mcp-oauth-provider/blob/main/docs/advanced.md#identify-users-in-your-mcp-server) that tell your server who is calling.
 
@@ -71,8 +73,39 @@ Open the printed [ngrok Traffic Inspector](https://dashboard.ngrok.com/traffic-i
 | `mcp_upstream_unavailable` (503)               | Start the MCP server, check `MCP_SERVER_URL`, and retry.                                  |
 | `user_required` (403)                          | Sign in with a Google account allowed by `USERS`.                                         |
 | `invalid_token` (401) or an expired connection | Reauthorize the MCP client. Claude may need logout before login after a state reset.      |
+| Too many requests (429)                        | Wait for the time in `Retry-After` before retrying.                                       |
 | CLI cannot start                               | Check the terminal error, `.env`, the public URL and your account's endpoint permissions. |
 | ngrok 3200 / endpoint offline                  | Check whether the provider is running and restart it if needed.                           |
+
+## How ngrok protects MCP traffic
+
+The provider generates its Traffic Policy at startup. This YAML shows the default rule that limits client registration and authorization requests before Google sign-in.
+
+```yaml
+on_http_request:
+  - expressions:
+      - "req.url.path == '/reg' || req.url.path == '/auth' || req.url.path.startsWith('/auth/')"
+    actions:
+      - type: rate-limit
+        config:
+          name: "OAuth registration and authorization"
+          algorithm: sliding_window
+          capacity: 30
+          rate: "60s"
+          bucket_key:
+            - "conn.client_ip"
+```
+
+The separate MCP limit runs after token validation and before forwarding to your server. It uses the verified user ID, with the client IP as a fallback for older tokens that lack that ID. Both limits use a 60-second sliding window at each ngrok ingress server. To override either default, set its environment variable and restart the provider. [.env.example](.env.example)
+
+| Traffic Policy feature         | What it does                                                                                                                                                                                    | Implementation                                                                                        |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Rate limiting                  | Caps OAuth registration and authorization per client IP and authenticated MCP requests per user.                                                                                                | [OAuth limit](lib/policy.ts#L92-L109), [MCP limit](lib/policy.ts#L230-L245)                           |
+| Google sign-in                 | Requires Google sign-in for consent and checks the signed-in email against `USERS`.                                                                                                             | [`oauth` and allowlist](lib/policy.ts#L110-L143)                                                      |
+| OAuth discovery and challenges | Serves protected-resource metadata and tells MCP clients how to authorize when a token is missing or invalid.                                                                                   | [`custom-response` and discovery](lib/policy.ts#L144-L172), [invalid tokens](lib/policy.ts#L214-L219) |
+| JWT validation                 | Calls a private validator that checks the JWT signature, issuer, audience, scope and validity window.                                                                                           | [`http-request`](lib/policy.ts#L173-L192), [`jwt-validation`](lib/policy.ts#L295-L356)                |
+| Trusted identity headers       | Strips caller-supplied identity headers, adds verified identity and removes the bearer token before forwarding.                                                                                 | [`remove-headers`](lib/policy.ts#L84-L91), [`add-headers` and forwarding](lib/policy.ts#L220-L256)    |
+| Private forwarding             | Sends authenticated requests to the private MCP upstream and keeps reserved routes out of optional website forwarding. With `MCP_SERVER_BINDING=internal`, it also strips the MCP query string. | [`forward-internal` and `url-rewrite`](lib/policy.ts#L246-L289)                                       |
 
 ## More
 

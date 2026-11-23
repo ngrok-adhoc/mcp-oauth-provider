@@ -66,8 +66,15 @@ test("MCP forwarding requires an exact positive validator response and fails clo
       `\${actions.ngrok.http_request.res.body.split('\\n')[${index + 1}]}`,
     );
   });
-  assert.equal(forwarding.actions[0].type, "remove-headers");
-  assert.deepEqual(forwarding.actions[0].config.headers, ["authorization"]);
+  const [limit, removeAuthorization] = forwarding.actions;
+  assert.equal(limit.type, "rate-limit");
+  assert.equal(limit.config.capacity, 60);
+  assert.equal(limit.config.rate, "60s");
+  assert.deepEqual(limit.config.bucket_key, [
+    "actions.ngrok.http_request.res.body.split('\\n')[2] == '' ? 'ip:' + conn.client_ip : 'user:' + actions.ngrok.http_request.res.body.split('\\n')[2]",
+  ]);
+  assert.equal(removeAuthorization.type, "remove-headers");
+  assert.deepEqual(removeAuthorization.config.headers, ["authorization"]);
   assert.equal(forwarding.actions.at(-2).config.on_error, "continue");
   assert.equal(forwarding.actions.at(-1).config.status_code, 503);
   assert.match(forwarding.actions.at(-1).config.body, /MCP_SERVER_URL/);
@@ -235,10 +242,13 @@ test("website fallback preserves MCP and OAuth paths in Traffic Policy", () => {
 
 test("anonymous OAuth endpoints are rate limited and only the policy can reach the local MCP proxy", () => {
   const rules = createPolicy(settings).on_http_request;
-  const [limit, ...others] = withAction(rules, "rate-limit");
-  assert.equal(others.length, 0);
+  const limits = withAction(rules, "rate-limit");
+  assert.equal(limits.length, 2);
+  const [limit] = limits;
   assert.match(expression(limit), /'\/reg'/);
   assert.match(expression(limit), /'\/auth'/);
+  assert.equal(limit.actions[0].config.capacity, 30);
+  assert.equal(limit.actions[0].config.rate, "60s");
   assert.deepEqual(limit.actions[0].config.bucket_key, ["conn.client_ip"]);
   const mcpForward = (policy) =>
     withAction(policy.on_http_request, "forward-internal").find((rule) =>

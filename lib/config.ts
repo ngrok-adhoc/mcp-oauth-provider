@@ -117,6 +117,15 @@ function readStorage(values: NodeJS.ProcessEnv): S3Storage | undefined {
   };
 }
 
+function readRequestsPerMinute(values: NodeJS.ProcessEnv, name: string) {
+  const value = values[name]?.trim();
+  if (!value) return undefined;
+  const capacity = Number(value);
+  if (!/^\d+$/.test(value) || capacity < 1 || capacity > 2_000_000_000)
+    throw new Error(`Set ${name} to an integer from 1 to 2000000000.`);
+  return capacity;
+}
+
 export async function readConfig({ cwd = process.cwd(), env = process.env } = {}) {
   let local: NodeJS.ProcessEnv = {};
   try {
@@ -183,6 +192,8 @@ export async function readConfig({ cwd = process.cwd(), env = process.env } = {}
     );
   return {
     users,
+    oauthRequestsPerMinute: readRequestsPerMinute(values, "OAUTH_REQUESTS_PER_MINUTE"),
+    mcpRequestsPerMinute: readRequestsPerMinute(values, "MCP_REQUESTS_PER_MINUTE"),
     storage: readStorage(values),
     claudeCimd: values.CLAUDE_CIMD === "1",
     mcpServerName: values.MCP_SERVER_NAME?.trim() || undefined,
