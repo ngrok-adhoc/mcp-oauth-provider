@@ -13,7 +13,7 @@ The Compose example below uses the provider image from GitHub Container Registry
 
 Requires Docker with Compose, an ngrok account with the required paid endpoints/Traffic Policy actions, and a Google account for sign-in. No custom Google application is needed.
 
-The image is public on GitHub Container Registry, so no registry login is needed. To use a local build instead, follow [Build the image locally](../README.md#build-the-image-locally), then start Compose with `--pull never`.
+The image is public on GitHub Container Registry, so no registry login is needed. To use a local build instead, follow [Build the image locally](development.md#build-the-image-locally), then start Compose with `--pull never`.
 
 Create a new directory:
 
@@ -101,9 +101,9 @@ docker compose --env-file .env logs -f provider
 
 Wait for the provider’s printed **MCP** URL. Use the public HTTPS MCP URL ending in `/mcp`, not `localhost` or the private Docker service address. The TCP health check must pass before the provider starts. The first run downloads images and Python dependencies; no extra source files are needed.
 
-Set `USERS='["guest@example.com","/[^@]+@example\\.org/"]'` in `.env` to give coworkers MCP access. See [company access](../README.md#share-with-your-company) for matching and token lifetime details.
+Set `USERS='["guest@example.com","/[^@]+@example\\.org/"]'` in `.env` to give coworkers MCP access. See [company access](advanced.md#share-with-your-company) for matching and token lifetime details.
 
-See the [client compatibility matrix](../README.md#client-compatibility) for documented requirements, automated coverage and the limits of the partial CLI probes. The steps below are manual verification instructions, not a record of completed end-to-end client tests.
+See the [client compatibility matrix](clients.md#client-compatibility) for documented requirements, automated coverage and the limits of the partial CLI probes. The steps below are manual verification instructions, not a record of completed end-to-end client tests.
 
 ## Test with Codex
 

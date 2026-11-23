@@ -10,6 +10,7 @@ import Provider, {
 } from "oidc-provider";
 
 import { ConsentPage } from "./consent-page.js";
+import { identityHeaders } from "./policy.js";
 import { OAuthUnavailable, oauthClockTolerance } from "./state.js";
 
 const claudeClientId = "https://claude.ai/oauth/mcp-oauth-client-metadata";
@@ -22,6 +23,40 @@ const equal = (a: string, b: string) => {
   const right = Buffer.from(b);
   return left.length === right.length && timingSafeEqual(left, right);
 };
+const claimNames = ["provider", "provider_user_id", "email", "name"] as const;
+type Identity = Record<(typeof claimNames)[number], string>;
+// Header-safe and unambiguous: percent-encode controls, non-ASCII and "%" itself.
+const headerSafe = (value: string) =>
+  // Slice code points, not UTF-16 units: a split surrogate would make encodeURIComponent throw.
+  Array.from(value.trim())
+    .slice(0, 256)
+    .map((char) => (/[\x20-\x24\x26-\x7e]/.test(char) ? char : encodeURIComponent(char)))
+    .join("");
+function gatewayIdentity(req: IncomingMessage): Identity | undefined {
+  // Node reads header bytes as Latin-1; ngrok sends UTF-8.
+  const [provider, id, email, name] = identityHeaders.map((header) => {
+    const value = req.headers[header];
+    return typeof value === "string" ? headerSafe(Buffer.from(value, "latin1").toString()) : "";
+  });
+  if (!provider || !(id || email)) return undefined;
+  return { provider, provider_user_id: id || email, email, name };
+}
+// Grants keep only an account ID, so it carries the identity for refreshed tokens.
+const accountId = (identity: Identity) =>
+  Buffer.from(JSON.stringify(claimNames.map((claim) => identity[claim]))).toString("base64url");
+function identityOf(id: unknown): Identity | undefined {
+  try {
+    const values: unknown = JSON.parse(Buffer.from(String(id), "base64url").toString());
+    if (
+      Array.isArray(values) &&
+      values.length === claimNames.length &&
+      values.every((value) => typeof value === "string")
+    )
+      return Object.fromEntries(claimNames.map((claim, i) => [claim, values[i]])) as Identity;
+  } catch {}
+  return undefined;
+}
+
 export interface IssuerOptions {
   issuer: string;
   gatewaySecret: string;
@@ -79,6 +114,16 @@ export function createIssuer({
   });
   // Consent every time: a remembered grant would let /auth, which has no Google gate, skip the gated consent page.
   const policy = interactionPolicy.base();
+  // Sign in every time too, so each grant uses the identity the gateway just verified.
+  policy
+    .get("login")!
+    .checks.add(
+      new interactionPolicy.Check("always_login", "login is required", (ctx) =>
+        ctx.oidc.result?.login
+          ? interactionPolicy.Check.NO_NEED_TO_PROMPT
+          : interactionPolicy.Check.REQUEST_PROMPT,
+      ),
+    );
   policy
     .get("consent")!
     .checks.add(
@@ -208,6 +253,12 @@ export function createIssuer({
       ctx.body = `${out.error_description ?? out.error}\nRestart authorization from your MCP client.`;
     },
     findAccount: (_ctx, id) => ({ accountId: id, claims: async () => ({ sub: id }) }),
+    extraTokenClaims: (_ctx, token) =>
+      Object.fromEntries(
+        Object.entries(identityOf("accountId" in token ? token.accountId : undefined) ?? {}).filter(
+          ([, value]) => value,
+        ),
+      ),
     issueRefreshToken: (_ctx, client) => client.grantTypeAllowed("refresh_token"),
     rotateRefreshToken: true,
     // Refresh tokens expire with the original grant, even after rotation or browser-session expiry.
@@ -218,7 +269,7 @@ export function createIssuer({
       AuthorizationCode: 15 * 60,
       // Sign-in takes minutes; a short TTL keeps the in-memory interaction store small.
       Interaction: 60 * 60,
-      Session: 24 * 60 * 60,
+      Session: 7 * 24 * 60 * 60,
       Grant: 90 * 24 * 60 * 60,
       RefreshToken: (ctx) => ctx.oidc.entities.Grant!.remainingTTL,
     },
@@ -277,19 +328,37 @@ export function createIssuer({
         res.setHeader("Allow", "GET, POST");
         return reply(res, 405, "Use GET or POST.");
       }
+      const identity = gatewayIdentity(req);
+      if (!identity) return reply(res, 403, "The sign-in gateway did not identify the user.");
+      const account = accountId(identity);
       const interaction = await provider.interactionDetails(req, res);
       if (path !== `/interaction/${interaction.uid}`)
         return reply(res, 400, "Restart authorization.");
       // The gateway already authenticated the user; only consent needs a browser form.
-      if (req.method === "GET" && interaction.prompt.name === "login")
+      if (req.method === "GET" && interaction.prompt.name === "login") {
+        // Switching accounts in one browser would otherwise make oidc-provider demand an unrouted logout.
+        const previous = interaction.session?.accountId;
+        if (previous && previous !== account && interaction.session?.uid) {
+          const session = await provider.Session.findByUid(interaction.session.uid);
+          if (session) {
+            for (const key of ["accountId", "loginTs", "amr", "acr", "authorizations"] as const)
+              delete session[key];
+            await session.persist();
+          }
+          // interactionFinished rejects an interaction whose recorded account differs from the session's.
+          delete (interaction.session as { accountId?: string }).accountId;
+          await interaction.save(interaction.exp - Math.floor(Date.now() / 1000));
+        }
         return await provider.interactionFinished(
           req,
           res,
-          { login: { accountId: "owner", amr: ["ngrok"], remember: true } },
+          { login: { accountId: account, amr: ["ngrok"], remember: true } },
           { mergeWithLastSubmission: false },
         );
-      if (interaction.prompt.name !== "consent" || interaction.session?.accountId !== "owner")
-        return reply(res, 400, "Restart authorization.");
+      }
+      if (interaction.prompt.name !== "consent") return reply(res, 400, "Restart authorization.");
+      if (interaction.session?.accountId !== account)
+        return reply(res, 400, "The signed-in account changed. Restart authorization.");
       if (req.method === "GET") {
         const client = await provider.Client.find(String(interaction.params.client_id));
         const name = client?.metadata().client_name;
@@ -344,7 +413,7 @@ export function createIssuer({
       const grant = interaction.grantId
         ? await provider.Grant.find(interaction.grantId)
         : new provider.Grant({
-            accountId: "owner",
+            accountId: account,
             clientId: String(interaction.params.client_id),
           });
       if (!grant) return reply(res, 400, "Authorization expired. Restart authorization.");

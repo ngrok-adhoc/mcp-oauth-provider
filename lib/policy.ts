@@ -1,5 +1,16 @@
 import type { AccessEntry } from "./config.js";
 
+// Identity headers: set by the gateway for the issuer, then forwarded to the MCP upstream.
+export const identityHeaders = [
+  "x-mcp-user-provider",
+  "x-mcp-user-id",
+  "x-mcp-user-email",
+  "x-mcp-user-name",
+] as const;
+// The validator replies with this line, then one line per identity header, in order.
+const validBody = `^\\{"valid":true\\}(\\n[^\\n]*){${identityHeaders.length}}$`;
+const provider = "google";
+
 const json = (body: object, status_code = 200, headers: Record<string, string> = {}) => ({
   type: "custom-response",
   config: {
@@ -42,6 +53,8 @@ export function createPolicy({
       .join(" || ");
   const hasEmail = `has(${email}) && ${email} != ''`;
   const allowedUser = `${hasEmail} && (${matches(users)})`;
+  const body = "actions.ngrok.http_request.res.body";
+  const validated = `req.url.path == '/mcp' && has(actions.ngrok.http_request.res) && actions.ngrok.http_request.res.status_code == 200 && ${body}.matches(${JSON.stringify(validBody)})`;
   const reserved = [
     "/mcp",
     "/mcp-debug",
@@ -67,7 +80,7 @@ export function createPolicy({
         actions: [
           {
             type: "remove-headers",
-            config: { headers: ["x-mcp-oauth-provider-secret"] },
+            config: { headers: ["x-mcp-oauth-provider-secret", ...identityHeaders] },
           },
         ],
       },
@@ -91,7 +104,7 @@ export function createPolicy({
       },
       {
         expressions: [`${interaction} || req.url.path.startsWith('/ngrok/')`],
-        actions: [{ type: "oauth", config: { provider: "google" } }],
+        actions: [{ type: "oauth", config: { provider } }],
       },
       {
         expressions: [`${interaction} && !(${allowedUser})`],
@@ -111,7 +124,15 @@ export function createPolicy({
           { type: "remove-headers", config: { headers: ["authorization"] } },
           {
             type: "add-headers",
-            config: { headers: { "x-mcp-oauth-provider-secret": gatewaySecret } },
+            config: {
+              headers: {
+                "x-mcp-user-provider": provider,
+                "x-mcp-user-id": "${actions.ngrok.oauth.identity.provider_user_id}",
+                "x-mcp-user-email": `\${${email}}`,
+                "x-mcp-user-name": "${actions.ngrok.oauth.identity.name}",
+                "x-mcp-oauth-provider-secret": gatewaySecret,
+              },
+            },
           },
         ],
       },
@@ -191,10 +212,18 @@ export function createPolicy({
         ],
         actions: [json({ error: "invalid_token" }, 401, { "www-authenticate": challenge })],
       },
-      {
-        expressions: [
-          "req.url.path == '/mcp' && has(actions.ngrok.http_request.res) && actions.ngrok.http_request.res.status_code == 200 && actions.ngrok.http_request.res.body == '{\"valid\":true}'",
+      // Omit identity headers the provider did not supply, such as a missing name.
+      ...identityHeaders.map((header, index) => ({
+        expressions: [`${validated} && ${body}.split('\\n')[${index + 1}] != ''`],
+        actions: [
+          {
+            type: "add-headers",
+            config: { headers: { [header]: `\${${body}.split('\\n')[${index + 1}]}` } },
+          },
         ],
+      })),
+      {
+        expressions: [validated],
         actions: [
           { type: "remove-headers", config: { headers: ["authorization"] } },
           // The local proxy requires the gateway secret, so only this policy can reach it.
@@ -247,6 +276,7 @@ export function createPolicy({
 // The outer policy converts ngrok's JWT failures into MCP's 401 challenge.
 export function createValidationPolicy({ issuer, jwksUrl }: { issuer: string; jwksUrl: string }) {
   const challenge = `Bearer resource_metadata="${issuer}/.well-known/oauth-protected-resource/mcp", scope="mcp:use"`;
+  const payload = "actions.ngrok.jwt_validation.tokens[0].payload";
   return {
     on_http_request: [
       {
@@ -285,7 +315,22 @@ export function createValidationPolicy({ issuer, jwksUrl }: { issuer: string; jw
         expressions: [
           "actions.ngrok.jwt_validation.tokens[0].verified && 'exp' in actions.ngrok.jwt_validation.tokens[0].payload && timestamp(actions.ngrok.jwt_validation.tokens[0].payload.exp.replace(' +0000 UTC','Z').replace(' ','T')) > timestamp(time.now) && (!('nbf' in actions.ngrok.jwt_validation.tokens[0].payload) || timestamp(actions.ngrok.jwt_validation.tokens[0].payload.nbf.replace(' +0000 UTC','Z').replace(' ','T')) <= timestamp(time.now))",
         ],
-        actions: [json({ valid: true })],
+        actions: [
+          {
+            type: "custom-response",
+            config: {
+              status_code: 200,
+              // The issuer writes header-safe claims, so no line can contain a newline.
+              body: [
+                '{"valid":true}',
+                ...["provider", "provider_user_id", "email", "name"].map(
+                  (claim) => `\${'${claim}' in ${payload} ? ${payload}.${claim} : ''}`,
+                ),
+              ].join("\n"),
+              headers: { "content-type": "text/plain", "cache-control": "no-store" },
+            },
+          },
+        ],
       },
       { actions: [json({ error: "invalid_token" }, 401)] },
     ],

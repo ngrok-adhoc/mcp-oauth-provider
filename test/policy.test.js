@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { RE2JS } from "re2js";
-import { createPolicy, createValidationPolicy } from "../dist/lib/policy.js";
+import { createPolicy, createValidationPolicy, identityHeaders } from "../dist/lib/policy.js";
 
 const settings = {
   issuer: "https://example.ngrok.app",
@@ -17,7 +17,11 @@ const withAction = (rules, type) =>
 test("only allowed Google accounts receive trusted helper access", () => {
   const adminEmail = 'owner"\\@example.com';
   const rules = createPolicy({ ...settings, users: [adminEmail] }).on_http_request;
-  assert.deepEqual(rules[0].actions[0].config.headers, ["x-mcp-oauth-provider-secret"]);
+  // Clients cannot supply the secret or identity headers.
+  assert.deepEqual(rules[0].actions[0].config.headers, [
+    "x-mcp-oauth-provider-secret",
+    ...identityHeaders,
+  ]);
   const google = withAction(rules, "oauth");
   assert.equal(google.length, 1);
   assert.match(expression(google[0]), /interaction/);
@@ -30,10 +34,12 @@ test("only allowed Google accounts receive trusted helper access", () => {
     expression(grants[0]).includes(`identity.email.lowerAscii() == ${JSON.stringify(adminEmail)}`),
   );
   assert.match(expression(grants[0]), /has\(actions.ngrok.oauth.identity.email\)/);
-  assert.equal(
-    grants[0].actions.at(-1).config.headers["x-mcp-oauth-provider-secret"],
-    settings.gatewaySecret,
-  );
+  const sent = grants[0].actions.at(-1).config.headers;
+  assert.equal(sent["x-mcp-oauth-provider-secret"], settings.gatewaySecret);
+  assert.equal(sent["x-mcp-user-provider"], "google");
+  assert.equal(sent["x-mcp-user-id"], "${actions.ngrok.oauth.identity.provider_user_id}");
+  assert.equal(sent["x-mcp-user-email"], "${actions.ngrok.oauth.identity.email}");
+  assert.equal(sent["x-mcp-user-name"], "${actions.ngrok.oauth.identity.name}");
   assert.throws(() => createPolicy({ ...settings, users: [] }), /USERS/);
 });
 
@@ -43,7 +49,23 @@ test("MCP forwarding requires an exact positive validator response and fails clo
     rule.actions.some((action) => action.config?.url === settings.mcpInternalUrl),
   );
   assert.match(expression(forwarding), /status_code == 200/);
-  assert.ok(expression(forwarding).includes(`body == '{"valid":true}'`));
+  const validator = RE2JS.compile(
+    JSON.parse(/body\.matches\(("(?:[^"\\]|\\.)*")\)/.exec(expression(forwarding))[1]),
+  );
+  assert.ok(validator.matches('{"valid":true}\ngoogle\n123\na@example.com\n'));
+  assert.ok(!validator.matches('{"valid":true}'));
+  assert.ok(!validator.matches('{"valid":true}\ngoogle\n123\na@example.com\nname\nextra'));
+  assert.ok(!validator.matches('{"valid":false}\ngoogle\n123\na@example.com\n'));
+  // Each identity header is added only when present, before forwarding.
+  identityHeaders.forEach((header, index) => {
+    const rule = rules[rules.indexOf(forwarding) - identityHeaders.length + index];
+    assert.ok(expression(rule).startsWith(expression(forwarding)));
+    assert.ok(expression(rule).endsWith(`split('\\n')[${index + 1}] != ''`));
+    assert.equal(
+      rule.actions[0].config.headers[header],
+      `\${actions.ngrok.http_request.res.body.split('\\n')[${index + 1}]}`,
+    );
+  });
   assert.equal(forwarding.actions[0].type, "remove-headers");
   assert.deepEqual(forwarding.actions[0].config.headers, ["authorization"]);
   assert.equal(forwarding.actions.at(-2).config.on_error, "continue");
@@ -96,7 +118,13 @@ test("JWT validator positively requires verified audience, scope and parsed time
   assert.deepEqual(jwt.jws.allowed_algorithms, ["RS256"]);
   assert.equal(rules[1].actions[0].config.status_code, 403);
   const allow = rules.find((rule) =>
-    rule.actions.some((action) => action.config?.body === '{"valid":true}'),
+    rule.actions.some((action) => action.config?.body?.startsWith('{"valid":true}\n')),
+  );
+  const lines = allow.actions[0].config.body.split("\n");
+  assert.equal(lines.length, identityHeaders.length + 1);
+  assert.match(
+    lines[3],
+    /^\$\{'email' in actions\.ngrok\.jwt_validation\.tokens\[0\]\.payload \? .*\.email : ''\}$/,
   );
   assert.match(expression(allow), /tokens\[0\].verified/);
   assert.match(expression(allow), /'exp' in/);

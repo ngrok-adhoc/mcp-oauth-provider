@@ -37,6 +37,14 @@ async function checkOAuth(
   t.after(() => server.close());
   const issuer = `http://127.0.0.1:${server.address().port}`;
   const gatewaySecret = "test-gateway-secret-".repeat(3);
+  // ngrok sends UTF-8 header bytes, which fetch can only express as Latin-1 characters.
+  const gateway = {
+    "x-mcp-oauth-provider-secret": gatewaySecret,
+    "x-mcp-user-provider": "google",
+    "x-mcp-user-id": "1234567890",
+    "x-mcp-user-email": "owner@example.com",
+    "x-mcp-user-name": Buffer.from("Zoë 100%").toString("latin1"),
+  };
   const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const key = {
     ...privateKey.export({ format: "jwk" }),
@@ -278,13 +286,19 @@ async function checkOAuth(
           (
             await request(location, {
               method: "DELETE",
-              headers: { "x-mcp-oauth-provider-secret": gatewaySecret },
+              headers: gateway,
             })
           ).status,
           405,
         );
+        assert.equal(
+          (await request(location, { headers: { "x-mcp-oauth-provider-secret": gatewaySecret } }))
+            .status,
+          403,
+          "The gateway must identify the user",
+        );
         const page = await request(location, {
-          headers: { "x-mcp-oauth-provider-secret": gatewaySecret },
+          headers: gateway,
         });
         if (page.status === 303) {
           result = page;
@@ -292,6 +306,12 @@ async function checkOAuth(
         }
         assert.equal(page.status, 200, await page.clone().text());
         consentForms++;
+        assert.equal(
+          (await request(location, { headers: { ...gateway, "x-mcp-user-id": "someone-else" } }))
+            .status,
+          400,
+          "A different signed-in account cannot approve this session's consent",
+        );
         assert.ok(
           page.headers.get("content-security-policy").includes(new URL(redirectUri).origin),
         );
@@ -339,7 +359,7 @@ async function checkOAuth(
           request(location, {
             method: "POST",
             headers: {
-              "x-mcp-oauth-provider-secret": gatewaySecret,
+              ...gateway,
               Origin: origin,
               "Content-Type": "application/x-www-form-urlencoded",
             },
@@ -405,7 +425,10 @@ async function checkOAuth(
   );
   assert.equal(claims.iss, issuer);
   assert.equal(claims.aud, resource);
-  assert.equal(claims.sub, "owner");
+  assert.equal(claims.provider, "google");
+  assert.equal(claims.provider_user_id, "1234567890");
+  assert.equal(claims.email, "owner@example.com");
+  assert.equal(claims.name, "Zo%C3%AB 100%25");
   assert.equal(claims.scope, "mcp:use");
   assert.equal(claims.exp - claims.iat, 60 * 60);
   const refresh = (value, extra = {}) =>
@@ -447,13 +470,22 @@ async function checkOAuth(
 
   if (persistent) {
     await start();
-    // The browser session survives a restart, but consent is still required every time.
-    const remembered = await authorize();
-    const consent = await request(remembered.headers.get("location"), {
-      headers: { "x-mcp-oauth-provider-secret": gatewaySecret },
-    });
+    // Sign-in and consent are required every time, even with a browser session from before a restart.
+    const consentPage = async (headers) => {
+      let page = await authorize();
+      for (let hops = 0; page.status === 303 && hops < 5; hops++) {
+        const location = page.headers.get("location");
+        page = await request(location, location.startsWith("/interaction/") ? { headers } : {});
+      }
+      return page;
+    };
+    const consent = await consentPage(gateway);
     assert.equal(consent.status, 200, await consent.clone().text());
     assert.match(await consent.text(), /Authorize/);
+    // Another account in the same browser signs in fresh.
+    const switched = await consentPage({ ...gateway, "x-mcp-user-id": "someone-else" });
+    assert.equal(switched.status, 200, await switched.clone().text());
+    assert.match(await switched.text(), /Authorize/);
   }
   now += 301_000;
   assert.ok(claims.exp > Math.floor(now / 1000));
@@ -467,7 +499,8 @@ async function checkOAuth(
   );
   assert.equal(renewedClaims.iss, issuer);
   assert.equal(renewedClaims.aud, resource);
-  assert.equal(renewedClaims.sub, "owner");
+  assert.equal(renewedClaims.sub, claims.sub);
+  assert.equal(renewedClaims.email, "owner@example.com");
   assert.equal(renewedClaims.scope, "mcp:use");
   assert.equal(renewedClaims.exp, Math.floor(now / 1000) + 60 * 60);
 
@@ -549,7 +582,7 @@ async function checkOAuth(
     await mkdir(join(project, ".mcp-oauth-provider", ".oauth.json.tmp"));
     // Interactions live in memory, so the outage surfaces when sign-in saves the browser session.
     const signedIn = await request(interaction, {
-      headers: { "x-mcp-oauth-provider-secret": gatewaySecret },
+      headers: gateway,
     });
     assert.equal(signedIn.status, 303);
     const page = await request(signedIn.headers.get("location"));
