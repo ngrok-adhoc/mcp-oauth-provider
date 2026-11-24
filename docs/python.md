@@ -13,7 +13,7 @@ The Compose example below uses the provider image from GitHub Container Registry
 
 Requires Docker with Compose, an ngrok account with the required paid endpoints/Traffic Policy actions, and a Google account for sign-in. No custom Google application is needed.
 
-The image is public on GitHub Container Registry, so no registry login is needed. To use a local build instead, follow [Build the image locally](development.md#build-the-image-locally), then start Compose with `--pull never`.
+Public access to the provider image is pending. Follow [Build the image locally](development.md#build-the-image-locally), then start Compose with `--pull never`.
 
 Create a new directory:
 
