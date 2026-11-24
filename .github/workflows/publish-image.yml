@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag to publish from main
+        description: Release tag to publish from main (leave blank for a dry run)
         type: string
   push:
     # Main warms the cache; only explicit release tags publish an image.
@@ -26,15 +26,19 @@ concurrency:
 
 permissions:
   contents: read
-  packages: write
 
 env:
   IMAGE: ghcr.io/ngrok-adhoc/mcp-oauth-provider-release
+  CANDIDATE: localhost:5000/mcp-oauth-provider:candidate
 
 jobs:
   publish:
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && inputs.tag != '')
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    permissions:
+      contents: read
+      packages: write
     env:
+      VERIFY_IMAGE: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') }}
       RELEASE_TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
     runs-on: ubuntu-latest
     steps:
@@ -61,6 +65,53 @@ jobs:
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: network=host
+      - name: Start a runner-local registry
+        if: env.VERIFY_IMAGE == 'true'
+        run: |
+          docker run --detach --publish 127.0.0.1:5000:5000 \
+            registry:3@sha256:82f6ff4a7f982960c8aa51617fea3aabc485df6e55cce80d22deb1de36f1bc3c
+          curl --fail --silent --show-error --retry 5 --retry-connrefused http://localhost:5000/v2/
+      - name: Build image
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ env.VERIFY_IMAGE == 'true' }}
+          tags: ${{ env.CANDIDATE }}
+          labels: |
+            org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=mcp-oauth-provider
+          cache-to: type=gha,scope=mcp-oauth-provider,mode=max
+          # Recheck Alpine's package repository on each build.
+          no-cache-filters: runtime
+          provenance: ${{ env.VERIFY_IMAGE == 'true' }}
+          sbom: ${{ env.VERIFY_IMAGE == 'true' }}
+      - name: Scan and smoke-test both platform manifests
+        if: env.VERIFY_IMAGE == 'true'
+        env:
+          INDEX_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          repository=${CANDIDATE%:*}
+          index=$(docker buildx imagetools inspect --raw "$repository@$INDEX_DIGEST")
+          version=$(node -p 'require("./package.json").version')
+          for arch in amd64 arm64; do
+            digest=$(jq -er --arg arch "$arch" \
+              '.manifests | map(select(.platform.os == "linux" and .platform.architecture == $arch)) | if length == 1 then .[0].digest else error("Expected exactly one manifest for " + $arch) end' \
+              <<< "$index")
+            image="$repository@$digest"
+            echo "Checking linux/$arch at $digest"
+            docker pull --platform "linux/$arch" "$image"
+            bash scripts/scan-image.sh "$image"
+            bash scripts/check-image.sh "$image" "$version"
+          done
+      - uses: regclient/actions/regctl-installer@dd58ad94f76adb73d8ac1bf75ed25f01545d5b32 # v0.2.0
+        if: env.VERIFY_IMAGE == 'true'
+        with:
+          release: v0.11.7
       - name: Log in to GitHub Container Registry
         if: env.RELEASE_TAG != ''
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
@@ -68,28 +119,23 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Extract image metadata
-        id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        with:
-          images: ${{ env.IMAGE }}
-          flavor: latest=false
-          tags: |
-            type=raw,value=${{ env.RELEASE_TAG }},enable=${{ env.RELEASE_TAG != '' }}
-            type=raw,value=${{ steps.source.outputs.version }},enable=${{ env.RELEASE_TAG != '' }}
-            type=raw,value=sha-${{ steps.source.outputs.sha }},enable=${{ env.RELEASE_TAG != '' }}
-            type=raw,value=latest,enable=${{ env.RELEASE_TAG != '' }}
-          labels: |
-            org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
-      - name: Build and publish image
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: ${{ env.RELEASE_TAG != '' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=mcp-oauth-provider
-          cache-to: type=gha,scope=mcp-oauth-provider,mode=max
-          provenance: ${{ env.RELEASE_TAG != '' }}
-          sbom: ${{ env.RELEASE_TAG != '' }}
+      - name: Promote the verified index by digest
+        if: env.VERIFY_IMAGE == 'true'
+        env:
+          INDEX_DIGEST: ${{ steps.build.outputs.digest }}
+          RELEASE_VERSION: ${{ steps.source.outputs.version }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          regctl registry set localhost:5000 --tls disabled
+          repository=${CANDIDATE%:*}
+          if [[ -n "$RELEASE_TAG" ]]; then
+            destination="$IMAGE"
+            tags=("$RELEASE_TAG" "$RELEASE_VERSION" "sha-$SOURCE_SHA" latest)
+          else
+            destination="localhost:5000/mcp-oauth-provider-verified"
+            tags=(dry-run)
+          fi
+          for tag in "${tags[@]}"; do
+            regctl image copy "$repository@$INDEX_DIGEST" "$destination:$tag"
+            test "$(regctl image digest "$destination:$tag")" = "$INDEX_DIGEST"
+          done

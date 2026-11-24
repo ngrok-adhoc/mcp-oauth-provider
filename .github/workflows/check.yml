@@ -13,26 +13,36 @@ jobs:
         with:
           node-version: 26
           cache: npm
+      - run: npm audit --audit-level=low
       - run: npm ci
       - run: npm run check
-      - name: Smoke-test the npm tarball
+      - name: Audit and smoke-test the npm tarball
         run: |
           version=$(node -p 'require("./package.json").version')
-          scratch=$(mktemp -d)
-          npm pack --pack-destination "$scratch"
-          cd "$scratch"
-          npm init -y
-          npm install --no-audit --no-fund "./mcp-oauth-provider-$version.tgz"
-          test "$(./node_modules/.bin/mcp-oauth-provider --version)" = "$version"
-          ./node_modules/.bin/mcp-oauth-provider --help
-          node -e 'require("@ngrok/ngrok"); console.log("Native ngrok SDK loaded")'
-  docker:
+          npm pack --pack-destination "$RUNNER_TEMP"
+          bash scripts/check-package.sh "$RUNNER_TEMP/mcp-oauth-provider-$version.tgz"
+  dependency-review:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
+        with:
+          fail-on-severity: low
+  docker:
+    name: Docker (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: docker build -t mcp-oauth-provider:ci .
-      - run: docker run --rm mcp-oauth-provider:ci --version
-      - run: docker run --rm mcp-oauth-provider:ci --help
-      - run: docker run --rm --entrypoint node mcp-oauth-provider:ci -e 'require("@ngrok/ngrok"); console.log("Native ngrok SDK loaded")'
+      - run: docker build --pull -t mcp-oauth-provider:ci .
+      - run: bash scripts/scan-image.sh mcp-oauth-provider:ci
+      - run: bash scripts/check-image.sh mcp-oauth-provider:ci "$(node -p 'require("./package.json").version')"
