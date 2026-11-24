@@ -32,11 +32,11 @@
     "pretest": "npm run build"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "3.1172.0",
-    "@hono/node-server": "2.1.9",
+    "@aws-sdk/client-s3": "3.1174.0",
+    "@hono/node-server": "2.1.11",
     "@ngrok/ngrok": "1.8.0",
     "hono": "4.13.19",
-    "oidc-provider": "9.15.0",
+    "oidc-provider": "9.15.1",
     "re2js": "2.10.0"
   },
   "devDependencies": {
