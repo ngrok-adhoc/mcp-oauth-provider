@@ -30,9 +30,11 @@ Use your ngrok **agent authtoken**, not an API key, and keep `.env` out of Git. 
 
 ```sh
 npx --yes \
-  --package=git+https://github.com/ngrok-adhoc/mcp-oauth-provider.git#main \
+  --package='git+https://github.com/ngrok-adhoc/mcp-oauth-provider.git#semver:*' \
   mcp-oauth-provider
 ```
+
+This command selects the latest stable Git tag. See the [latest release](https://github.com/ngrok-adhoc/mcp-oauth-provider/releases/latest) for the version and release notes.
 
 It prints the public **MCP URL**. Press **Ctrl+C** to stop.
 
