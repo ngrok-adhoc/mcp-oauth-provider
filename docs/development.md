@@ -20,7 +20,7 @@ Build from `main` and tag the image name used by the tutorial:
 ```sh
 git clone --branch main https://github.com/ngrok-adhoc/mcp-oauth-provider.git
 cd mcp-oauth-provider
-docker build --tag ghcr.io/ngrok-adhoc/mcp-oauth-provider:latest .
+docker build --tag ghcr.io/ngrok-adhoc/mcp-oauth-provider-release:latest .
 ```
 
 Then return to your separate consumer directory containing `.env` and the copied `compose.yaml`:
@@ -40,19 +40,19 @@ Maintainers release from a clean `main` checkout matching `origin/main`, after t
 npm run tag-release -- 0.1.0
 ```
 
-The command creates an annotated `v0.1.0` tag without overwriting existing tags. Its push runs **Publish image**, publishing Linux amd64/arm64 images to `ghcr.io/ngrok-adhoc/mcp-oauth-provider` with `0.1.0`, `v0.1.0`, a commit SHA tag and `latest`. Main-branch builds only warm the build cache. Wait for the image workflow to succeed before updating tutorial image versions.
+The command creates an annotated `v0.1.0` tag without overwriting existing tags. Its push runs **Publish image**, publishing Linux amd64/arm64 images to `ghcr.io/ngrok-adhoc/mcp-oauth-provider-release` with `0.1.0`, `v0.1.0`, a commit SHA tag and `latest`. Main-branch builds only warm the build cache. Wait for the image workflow to succeed before updating tutorial image versions.
 
 Set the container package to public in GHCR package settings. From a Docker client without GHCR credentials, check that the image index lists both Linux platforms and confirm that the versioned image runs.
 
 ```sh
-docker buildx imagetools inspect ghcr.io/ngrok-adhoc/mcp-oauth-provider:0.1.0
-docker run --rm ghcr.io/ngrok-adhoc/mcp-oauth-provider:0.1.0 --version
+docker buildx imagetools inspect ghcr.io/ngrok-adhoc/mcp-oauth-provider-release:0.1.0
+docker run --rm ghcr.io/ngrok-adhoc/mcp-oauth-provider-release:0.1.0 --version
 ```
 
 If an automated release creates its tag using `GITHUB_TOKEN`, explicitly dispatch the publishing workflow at that tag because that token's tag push does not trigger another workflow:
 
 ```sh
-gh workflow run publish-image.yml --ref v0.1.0
+gh workflow run publish-image.yml --ref main -f tag=v0.1.0
 ```
 
 The workflow must already be on the default branch for dispatch. Retry a failed image build at the same tag; never overwrite the tag or create another version merely to retry a build.

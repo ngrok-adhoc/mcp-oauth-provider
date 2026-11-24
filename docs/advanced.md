@@ -104,7 +104,7 @@ Use your existing HTTP server command (for example `node server.mjs`) instead of
 
 ## Docker and background use
 
-Use `ghcr.io/ngrok-adhoc/mcp-oauth-provider:latest` with the [tutorial's Compose example](https://github.com/ngrok-adhoc/mcp-oauth-provider/blob/main/docs/python.md). It runs in the background with `up -d`; use `logs -f provider` to see connection URLs and `down` to stop the stack.
+Use `ghcr.io/ngrok-adhoc/mcp-oauth-provider-release:latest` with the [tutorial's Compose example](https://github.com/ngrok-adhoc/mcp-oauth-provider/blob/main/docs/python.md). It runs in the background with `up -d`; use `logs -f provider` to see connection URLs and `down` to stop the stack.
 
 The image runs as a nonroot user, opens no local ports. Set `APP_URL` and `MCP_SERVER_URL` to trusted services on your Compose network, such as `http://app:3000` and `http://mcp:8000/mcp`. Container `localhost` means the provider container. Host services can use `host.docker.internal`; on Linux, a host-gateway mapping still cannot reach a listener bound only to host loopback.
 
