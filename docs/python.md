@@ -13,8 +13,6 @@ The Compose example below uses the provider image from GitHub Container Registry
 
 Requires Docker with Compose, an ngrok account with the required paid endpoints/Traffic Policy actions, and a Google account for sign-in. No custom Google application is needed.
 
-Public access to the provider image is pending. Follow [Build the image locally](development.md#build-the-image-locally), then start Compose with `--pull never`.
-
 Create a new directory:
 
 ```sh
@@ -72,7 +70,7 @@ services:
       start_period: 30s
 
   provider:
-    image: ghcr.io/ngrok-adhoc/mcp-oauth-provider-release:latest
+    image: ghcr.io/ngrok-adhoc/mcp-oauth-provider-public:0.1.1
     init: true
     depends_on:
       mcp:

@@ -28,7 +28,7 @@ permissions:
   contents: read
 
 env:
-  IMAGE: ghcr.io/ngrok-adhoc/mcp-oauth-provider-release
+  IMAGE: ghcr.io/ngrok-adhoc/mcp-oauth-provider-public
   CANDIDATE: localhost:5000/mcp-oauth-provider:candidate
 
 jobs:
