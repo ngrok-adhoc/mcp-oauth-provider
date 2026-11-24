@@ -1,6 +1,6 @@
 {
   "name": "mcp-oauth-provider",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Add ngrok-managed OAuth to a local MCP server without changing its code",
   "license": "MIT",
   "repository": {
