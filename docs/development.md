@@ -17,22 +17,23 @@ Dependabot opens update PRs for npm, Docker base images and GitHub Actions. Revi
 
 ## Build the image locally
 
-Build from `main` and tag the image name used by the tutorial:
+From the directory where you keep source checkouts, clone v0.1.1 and build the image used by the tutorial.
 
 ```sh
-git clone --branch main https://github.com/ngrok-adhoc/mcp-oauth-provider.git
+git clone --branch v0.1.1 --single-branch https://github.com/ngrok-adhoc/mcp-oauth-provider.git
 cd mcp-oauth-provider
-docker build --tag ghcr.io/ngrok-adhoc/mcp-oauth-provider-public:0.1.1 .
+docker build --tag mcp-oauth-provider:0.1.1 .
 ```
 
-Then return to your separate consumer directory containing `.env` and the copied `compose.yaml`:
+Return to the [Compose tutorial](python.md#start-the-stack) to create `.env` and `compose.yaml`. From that directory, pull Python and start the stack.
 
 ```sh
 cd /path/to/mcp-demo
+docker pull python:3.13-slim
 docker compose --env-file .env up -d --pull never
 ```
 
-`--pull never` uses the locally built image. Make sure `python:3.13-slim` is available locally first (`docker pull python:3.13-slim`). This verifies the local build, not registry access.
+`--pull never` makes Compose use the provider image you built and the Python image you pulled.
 
 ## Publish a release
 

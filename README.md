@@ -64,7 +64,7 @@ See [.env.example](.env.example) for every setting and [advanced features](https
 
 ## Run with Docker Compose
 
-Follow the [Compose tutorial](https://github.com/ngrok-adhoc/mcp-oauth-provider/blob/main/docs/python.md) to run the provider with a sample Python MCP server, no local Node or Python needed.
+Follow the [Compose tutorial](https://github.com/ngrok-adhoc/mcp-oauth-provider/blob/main/docs/python.md) to build the provider image locally and run it with a sample Python MCP server. You only need Docker with Compose to build and run the containers.
 
 ## Diagnose a connection
 

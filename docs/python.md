@@ -7,13 +7,13 @@ Codex / Claude Code → https://your-ngrok-host/mcp
                       ngrok Traffic Policy → provider → mcp:8000/mcp
 ```
 
-The Compose example below uses the provider image from GitHub Container Registry and injects a minimal server into an official Python container with the pinned MCP SDK. Python contains no OAuth or provider imports. Neither container publishes a host port. The only public entry is ngrok.
+The Compose example below uses a locally built provider image and injects a minimal server into an official Python container with the pinned MCP SDK. Python contains no OAuth or provider imports. Neither container publishes a host port. The only public entry is ngrok.
 
 ## Start the stack
 
 Requires Docker with Compose, an ngrok account with the required paid endpoints/Traffic Policy actions, and a Google account for sign-in. No custom Google application is needed.
 
-Public access to the v0.1.1 image is pending. If you do not have access to the GHCR package, [build the image locally](development.md#build-the-image-locally) and add `--pull never` to the Compose command below.
+[Build the provider image locally](development.md#build-the-image-locally) before starting Compose. The example uses the local tag `mcp-oauth-provider:0.1.1`.
 
 Create a new directory:
 
@@ -72,7 +72,7 @@ services:
       start_period: 30s
 
   provider:
-    image: ghcr.io/ngrok-adhoc/mcp-oauth-provider-public:0.1.1
+    image: mcp-oauth-provider:0.1.1
     init: true
     depends_on:
       mcp:
@@ -90,16 +90,15 @@ volumes:
   oauth-state:
 ```
 
-Start the stack. Docker pulls the images automatically when it can access the GHCR package:
-
-To use a local build, add `--pull never` to the command.
+Pull the Python base image, then start Compose with the images you prepared locally.
 
 ```sh
-docker compose --env-file .env up -d
+docker pull python:3.13-slim
+docker compose --env-file .env up -d --pull never
 docker compose --env-file .env logs -f provider
 ```
 
-Wait for the provider’s printed **MCP** URL. Use the public HTTPS MCP URL ending in `/mcp`, not `localhost` or the private Docker service address. The TCP health check must pass before the provider starts. The first run downloads images and Python dependencies; no extra source files are needed.
+Wait for the provider’s printed **MCP** URL. Use the public HTTPS MCP URL ending in `/mcp`, not `localhost` or the private Docker service address. The TCP health check must pass before the provider starts. The Python container installs its MCP dependency on startup.
 
 Set `USERS='["guest@example.com","/[^@]+@example\\.org/"]'` in `.env` to give coworkers MCP access. See [company access](advanced.md#share-with-your-company) for matching and token lifetime details.
 
