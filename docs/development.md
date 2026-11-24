@@ -11,7 +11,7 @@ Run `npm start` to build and launch the local checkout. The provider uses TypeSc
 
 For harmless manual fixtures, run `node test/fixtures/upstreams.js` and set `APP_URL=http://127.0.0.1:54831` and `MCP_SERVER_URL=http://127.0.0.1:54832/original-mcp`.
 
-The package's `bin` entry is the CLI; tests exercise configuration, OAuth boundaries, forwarding and Traffic Policy generation. Public npm publication and binary distribution are separate future steps.
+The package's `bin` entry is the CLI; tests exercise configuration, OAuth boundaries, forwarding and Traffic Policy generation. The **Check** workflow also installs the npm tarball into a clean directory and checks that the CLI and native SDK load.
 
 ## Build the image locally
 
@@ -32,9 +32,9 @@ docker compose --env-file .env up -d --pull never
 
 `--pull never` uses the locally built image. Make sure `python:3.13-slim` is available locally first (`docker pull python:3.13-slim`). This verifies the local build, not registry access.
 
-## Publish a Docker release
+## Publish a release
 
-Maintainers release from a clean `main` checkout matching `origin/main`, after the change has been reviewed and merged. Commit the intended version in `package.json` first, then supply that exact version:
+Maintainers release from a clean `main` checkout matching `origin/main`, after the change has been reviewed and merged. Merge matching versions in `package.json` and `package-lock.json`, then check that **Check** passed on the release commit. For the first public release, use `0.1.0`. If your checkout has an older local-only `v0.1.0` tag, release from a fresh clone of `origin/main` to preserve that tag.
 
 ```sh
 npm run tag-release -- 0.1.0
@@ -42,7 +42,12 @@ npm run tag-release -- 0.1.0
 
 The command creates an annotated `v0.1.0` tag without overwriting existing tags. Its push runs **Publish image**, publishing Linux amd64/arm64 images to `ghcr.io/ngrok-adhoc/mcp-oauth-provider` with `0.1.0`, `v0.1.0`, a commit SHA tag and `latest`. Main-branch builds only warm the build cache. Wait for the image workflow to succeed before updating tutorial image versions.
 
-Package visibility is set in the GHCR package settings, not by the workflow. After a release, confirm an anonymous pull works with `docker logout ghcr.io && docker pull ghcr.io/ngrok-adhoc/mcp-oauth-provider:latest`.
+Set the container package to public in GHCR package settings. From a Docker client without GHCR credentials, check that the image index lists both Linux platforms and confirm that the versioned image runs.
+
+```sh
+docker buildx imagetools inspect ghcr.io/ngrok-adhoc/mcp-oauth-provider:0.1.0
+docker run --rm ghcr.io/ngrok-adhoc/mcp-oauth-provider:0.1.0 --version
+```
 
 If an automated release creates its tag using `GITHUB_TOKEN`, explicitly dispatch the publishing workflow at that tag because that token's tag push does not trigger another workflow:
 
@@ -51,3 +56,21 @@ gh workflow run publish-image.yml --ref v0.1.0
 ```
 
 The workflow must already be on the default branch for dispatch. Retry a failed image build at the same tag; never overwrite the tag or create another version merely to retry a build.
+
+## Publish release notes and the CLI tarball
+
+From the verified release commit, build the tarball and attach it to a draft GitHub Release.
+
+```sh
+npm ci
+npm pack
+gh release create v0.1.0 mcp-oauth-provider-0.1.0.tgz --verify-tag --generate-notes --draft
+```
+
+Edit the draft to describe verified identity headers, the OAuth and MCP rate limit defaults, and stop-then-start upgrades for a fixed `NGROK_URL`. Include the verified Docker image tag. Publish the draft, then verify the CLI asset from a clean install.
+
+```sh
+npx --yes \
+  --package=https://github.com/ngrok-adhoc/mcp-oauth-provider/releases/download/v0.1.0/mcp-oauth-provider-0.1.0.tgz \
+  mcp-oauth-provider --version
+```
