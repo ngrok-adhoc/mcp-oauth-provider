@@ -44,7 +44,9 @@ npm run tag-release -- 0.1.1
 
 The command creates an annotated tag without overwriting existing tags. Its push runs **Publish image**. The workflow builds a Linux amd64/arm64 image in a runner-local registry, scans and smoke-tests both manifests, and only then copies the verified index, including its SBOM and provenance, to `ghcr.io/ngrok-adhoc/mcp-oauth-provider-release`. It publishes the two version tags, a commit SHA tag and `latest`. Trivy blocks publication on known findings at any severity or on a scanner error. Main-branch pushes warm the build cache. A manual run on `main` with the tag field empty verifies the full workflow in the runner-local registry. Wait for the release run to succeed before updating tutorial image versions.
 
-Set the container package to public in GHCR package settings. From a Docker client without GHCR credentials, check that the image index lists both Linux platforms and confirm that the versioned image runs.
+GHCR visibility applies to the entire package, including historical tags. Making a package public is permanent. Keep the existing package private while the vulnerable `v0.1.0` image is present. Before enabling public pulls, retire the affected image version or use a fresh package containing only verified releases. See [GHCR package visibility](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility).
+
+After enabling public pulls, use a Docker client without GHCR credentials to check that the image index lists both Linux platforms and confirm that the versioned image runs.
 
 ```sh
 docker buildx imagetools inspect ghcr.io/ngrok-adhoc/mcp-oauth-provider-release:0.1.1
