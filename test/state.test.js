@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, rm, rmdir, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  rmdir,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -101,6 +112,11 @@ test("OAuth state is private, Git-ignored, and recovers after a process is kille
   await assert.rejects(() => openOAuthState(issuer, users, cwd), /Cannot read OAuth state/);
   assert.equal(await readFile(snapshot, "utf8"), "{invalid");
   await chmod(snapshot, 0o644);
+  await assert.rejects(() => openOAuthState(issuer, users, cwd), /state file must be.*private/);
+  await chmod(snapshot, 0o600);
+  const renamed = join(directory, "renamed.json");
+  await rename(snapshot, renamed);
+  await symlink(renamed, snapshot);
   await assert.rejects(() => openOAuthState(issuer, users, cwd), /state file must be.*private/);
 });
 

@@ -1,5 +1,7 @@
 import {
   closeSync,
+  constants,
+  fstatSync,
   fsyncSync,
   lstatSync,
   mkdirSync,
@@ -116,13 +118,26 @@ function openFileStorage(cwd: string): StateStorage {
       } catch (error) {
         if (!hasCode(error, "ENOENT")) throw error;
       }
-      const file = lstatSync(filename, { throwIfNoEntry: false });
-      if (!file) return;
-      if (!file.isFile() || file.nlink !== 1 || file.uid !== uid || (file.mode & 0o077) !== 0)
-        throw new Error(
+      const privateFileError = () =>
+        new Error(
           `OAuth state file must be owned by the current user and private (0600): ${filename}`,
         );
-      return readFileSync(filename, "utf8");
+      let fd;
+      try {
+        fd = openSync(filename, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+      } catch (error) {
+        if (hasCode(error, "ENOENT")) return;
+        if (hasCode(error, "ELOOP")) throw privateFileError();
+        throw error;
+      }
+      try {
+        const file = fstatSync(fd);
+        if (!file.isFile() || file.nlink !== 1 || file.uid !== uid || (file.mode & 0o077) !== 0)
+          throw privateFileError();
+        return readFileSync(fd, "utf8");
+      } finally {
+        closeSync(fd);
+      }
     },
     write(data) {
       writeFileSync(pending, data, { flag: "wx", mode: 0o600, flush: true });

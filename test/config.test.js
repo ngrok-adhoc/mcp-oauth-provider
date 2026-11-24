@@ -36,7 +36,8 @@ test("working-directory .env, environment precedence and URL boundaries", async 
     assert.equal(branded.oauthRequestsPerMinute, 45);
     assert.equal(branded.mcpServerName, "Bowie");
     assert.equal(branded.mcpServerIcon.href, "https://images.example.com/bowie.png");
-    const icon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>';
+    const icon =
+      '<?xml version="1.0"?>\n<!-- first -->\n<!-- second -->\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>';
     const iconPath = join(cwd, "Bowie icon.svg");
     await writeFile(iconPath, icon);
     for (const ref of ["./Bowie icon.svg", iconPath, pathToFileURL(iconPath).href]) {
@@ -47,6 +48,7 @@ test("working-directory .env, environment precedence and URL boundaries", async 
       );
     }
     await writeFile(join(cwd, "invalid.png"), "not an image");
+    await writeFile(join(cwd, "unclosed.svg"), "<!-- missing closing marker <svg>");
     await writeFile(join(cwd, "large.svg"), Buffer.alloc(256 * 1024 + 1));
     for (const env of [
       { APP_URL: "not a URL" },
@@ -63,6 +65,7 @@ test("working-directory .env, environment precedence and URL boundaries", async 
       { MCP_SERVER_ICON: "https://example.com;img-src/icon.png" },
       { MCP_SERVER_ICON: "data:image/svg+xml,logo" },
       { MCP_SERVER_ICON: "./invalid.png" },
+      { MCP_SERVER_ICON: "./unclosed.svg" },
       { MCP_SERVER_ICON: "./large.svg" },
       { MCP_SERVER_ICON: "./missing.png" },
       { USERS: "" },

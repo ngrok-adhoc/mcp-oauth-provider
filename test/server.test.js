@@ -160,18 +160,18 @@ test("MCP responses stream before the upstream closes", async (t) => {
 });
 
 test("a root-mounted MCP server is reachable only through the private adapter", async (t) => {
-  let requests = 0;
+  const paths = [];
   const { helperUrl, mcpProxyUrl } = await fixture(
     t,
     (req, res) => {
-      requests++;
-      res.end(req.url);
+      paths.push(req.url);
+      res.end("root MCP");
     },
     "/",
   );
   assert.equal((await fetch(`${helperUrl}/`)).status, 404);
   assert.equal((await fetch(`${helperUrl}/anything`)).status, 404);
-  assert.equal(requests, 0);
-  assert.equal(await (await fetch(`${mcpProxyUrl}/mcp`, gateway)).text(), "/");
-  assert.equal(requests, 1);
+  assert.deepEqual(paths, []);
+  assert.equal(await (await fetch(`${mcpProxyUrl}/mcp`, gateway)).text(), "root MCP");
+  assert.deepEqual(paths, ["/"]);
 });
