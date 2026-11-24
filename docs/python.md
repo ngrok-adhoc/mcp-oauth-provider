@@ -72,7 +72,7 @@ services:
       start_period: 30s
 
   provider:
-    image: ghcr.io/ngrok-adhoc/mcp-oauth-provider:latest
+    image: ghcr.io/ngrok-adhoc/mcp-oauth-provider-release:latest
     init: true
     depends_on:
       mcp:
