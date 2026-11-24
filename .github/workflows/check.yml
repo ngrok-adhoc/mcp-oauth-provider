@@ -15,6 +15,17 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - name: Smoke-test the npm tarball
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          scratch=$(mktemp -d)
+          npm pack --pack-destination "$scratch"
+          cd "$scratch"
+          npm init -y
+          npm install --no-audit --no-fund "./mcp-oauth-provider-$version.tgz"
+          test "$(./node_modules/.bin/mcp-oauth-provider --version)" = "$version"
+          ./node_modules/.bin/mcp-oauth-provider --help
+          node -e 'require("@ngrok/ngrok"); console.log("Native ngrok SDK loaded")'
   docker:
     runs-on: ubuntu-latest
     steps:
