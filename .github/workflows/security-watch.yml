@@ -1,0 +1,58 @@
+name: Security watch
+on:
+  schedule:
+    - cron: "23 17 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - name: Audit the current lockfile
+        run: npm audit --audit-level=low
+      - name: Audit the latest released tarball
+        if: success() || failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --pattern 'mcp-oauth-provider-*.tgz' --dir "$RUNNER_TEMP"
+          tarballs=("$RUNNER_TEMP"/mcp-oauth-provider-*.tgz)
+          test "${#tarballs[@]}" = 1
+          bash scripts/check-package.sh "${tarballs[0]}" --audit-only
+  image:
+    name: Released image (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Scan the latest released image
+        env:
+          ARCH: ${{ matrix.arch }}
+          IMAGE: ghcr.io/ngrok-adhoc/mcp-oauth-provider-release:latest
+        run: |
+          docker pull --platform "linux/$ARCH" "$IMAGE"
+          bash scripts/scan-image.sh "$IMAGE"
