@@ -13,6 +13,8 @@ The Compose example below uses the provider image from GitHub Container Registry
 
 Requires Docker with Compose, an ngrok account with the required paid endpoints/Traffic Policy actions, and a Google account for sign-in. No custom Google application is needed.
 
+Public access to the v0.1.1 image is pending. If you do not have access to the GHCR package, [build the image locally](development.md#build-the-image-locally) and add `--pull never` to the Compose command below.
+
 Create a new directory:
 
 ```sh
@@ -88,7 +90,7 @@ volumes:
   oauth-state:
 ```
 
-Start the stack. Docker pulls the images automatically; no repository checkout or local build is needed:
+Start the stack. Docker pulls the images automatically when it can access the GHCR package:
 
 To use a local build, add `--pull never` to the command.
 
