@@ -1,4 +1,5 @@
-import { readFile, stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { open, readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
@@ -43,6 +44,19 @@ function readUsers(value?: string): AccessEntry[] {
   });
 }
 
+function hasSvgRoot(source: string) {
+  let contents = source
+    .trimStart()
+    .replace(/^<\?xml[^>]*\?>/, "")
+    .trimStart();
+  while (contents.startsWith("<!--")) {
+    const end = contents.indexOf("-->", 4);
+    if (end === -1) return false;
+    contents = contents.slice(end + 3).trimStart();
+  }
+  return /^<svg[\s>]/.test(contents);
+}
+
 async function readIcon(setting: string | undefined, cwd: string) {
   if (!setting) return undefined;
   const url = isAbsolute(setting) ? null : URL.parse(setting);
@@ -63,10 +77,22 @@ async function readIcon(setting: string | undefined, cwd: string) {
   let bytes;
   try {
     const path = url ? fileURLToPath(url) : resolve(cwd, setting);
-    const info = await stat(path);
-    if (!info.isFile() || info.size > maxBytes) throw new Error();
-    bytes = await readFile(path);
-    if (bytes.length > maxBytes) throw new Error();
+    const file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK);
+    try {
+      const info = await file.stat();
+      if (!info.isFile() || info.size > maxBytes) throw new Error();
+      const buffer = Buffer.alloc(maxBytes + 1);
+      let length = 0;
+      while (length < buffer.length) {
+        const { bytesRead } = await file.read(buffer, length, buffer.length - length, length);
+        if (!bytesRead) break;
+        length += bytesRead;
+      }
+      if (length > maxBytes) throw new Error();
+      bytes = buffer.subarray(0, length);
+    } finally {
+      await file.close();
+    }
   } catch {
     throw new Error("Set MCP_SERVER_ICON to a readable local image of at most 256 KiB.");
   }
@@ -76,10 +102,7 @@ async function readIcon(setting: string | undefined, cwd: string) {
   else if (header.startsWith("\xff\xd8\xff")) mime = "jpeg";
   else if (/^GIF8[79]a/.test(header)) mime = "gif";
   else if (header.startsWith("RIFF") && header.endsWith("WEBP")) mime = "webp";
-  else if (
-    /^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*)*<svg[\s>]/.test(bytes.toString("utf8"))
-  )
-    mime = "svg+xml";
+  else if (hasSvgRoot(bytes.toString("utf8"))) mime = "svg+xml";
   if (!mime) throw new Error("MCP_SERVER_ICON must be a PNG, JPEG, GIF, WebP, or SVG image.");
   return new URL(`data:image/${mime};base64,${bytes.toString("base64")}`);
 }

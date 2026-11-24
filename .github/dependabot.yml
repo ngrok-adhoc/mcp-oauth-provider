@@ -20,8 +20,6 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    exclude-paths:
-      - .github/workflows/ngrok-ship-*.yml
     groups:
       actions-minor-and-patch:
         update-types: [minor, patch]
