@@ -43,17 +43,17 @@ Maintainers release from a clean `main` checkout matching `origin/main`, after t
 npm run tag-release -- 0.1.1
 ```
 
-The command creates an annotated tag without overwriting existing tags. Its push runs **Publish image**. The workflow builds a Linux amd64/arm64 image in a runner-local registry, scans and smoke-tests both manifests, and only then copies the verified index, including its SBOM and provenance, to `ghcr.io/ngrok-adhoc/mcp-oauth-provider-public`. It publishes the two version tags, a commit SHA tag and `latest`. Trivy blocks publication on known findings at any severity or on a scanner error. Main-branch pushes warm the build cache. A manual run on `main` with the tag field empty verifies the full workflow in the runner-local registry. Wait for the release run to succeed before updating tutorial image versions.
+The command creates an annotated tag without overwriting existing tags. Its push runs **Publish image**. The workflow builds a Linux amd64/arm64 image in a runner-local registry, scans and smoke-tests both manifests, and only then copies the verified index, including its SBOM and provenance, to `ghcr.io/ngrok-adhoc/mcp-oauth-provider`. It publishes the two version tags, a commit SHA tag and `latest`. Trivy blocks publication on known findings at any severity or on a scanner error. Main-branch pushes warm the build cache. A manual run on `main` with the tag field empty verifies the full workflow in the runner-local registry. Wait for the release run to succeed before updating tutorial image versions.
 
-GHCR visibility applies to the entire package, including historical tags. Making a package public is permanent. The legacy `mcp-oauth-provider-release` package stays private. Enable public pulls only on `mcp-oauth-provider-public` after confirming that it contains only verified releases. See [GHCR package visibility](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility).
+GHCR visibility applies to the entire package, including historical tags. Making a package public is permanent. Before enabling public pulls on `mcp-oauth-provider`, inspect all existing versions and remove any historical images that were not approved for public distribution. See [GHCR package visibility](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility).
 
 After enabling public pulls, use a Docker client without GHCR credentials to check that the image index lists both Linux platforms and confirm that the versioned image runs.
 
 ```sh
-docker buildx imagetools inspect ghcr.io/ngrok-adhoc/mcp-oauth-provider-public:0.1.1
+docker buildx imagetools inspect ghcr.io/ngrok-adhoc/mcp-oauth-provider:0.1.1
 for arch in amd64 arm64; do
-  docker pull --platform "linux/$arch" ghcr.io/ngrok-adhoc/mcp-oauth-provider-public:0.1.1
-  docker run --rm --platform "linux/$arch" ghcr.io/ngrok-adhoc/mcp-oauth-provider-public:0.1.1 --version
+  docker pull --platform "linux/$arch" ghcr.io/ngrok-adhoc/mcp-oauth-provider:0.1.1
+  docker run --rm --platform "linux/$arch" ghcr.io/ngrok-adhoc/mcp-oauth-provider:0.1.1 --version
 done
 ```
 
