@@ -52,7 +52,7 @@ jobs:
       - name: Scan the latest released image
         env:
           ARCH: ${{ matrix.arch }}
-          IMAGE: ghcr.io/ngrok-adhoc/mcp-oauth-provider-public:latest
+          IMAGE: ghcr.io/ngrok-adhoc/mcp-oauth-provider:latest
         run: |
           docker pull --platform "linux/$ARCH" "$IMAGE"
           bash scripts/scan-image.sh "$IMAGE"
